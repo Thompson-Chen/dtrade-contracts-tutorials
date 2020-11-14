@@ -1,5 +1,5 @@
 # ink-contracts
-The repo contains the contracts written on ink.
+The repo contains the contracts written on ink!.
 
 ### How to use:
 Setup rust using the [installtion guide](https://doc.rust-lang.org/cargo/getting-started/installation.html).  Setup cargo contract cli tool using:

@@ -2,6 +2,7 @@
 
 /// solidity version of this contract 
 /// could be found here: https://solidity.readthedocs.io/en/v0.5.3/solidity-by-example.html
+/// there are some modifications made to this contract
 
 use ink_lang as ink;
 
@@ -30,6 +31,7 @@ mod ballot {
         vote: Option<i32>,   // index of the voted proposal
     }
 
+    /// ballot to store the chair person name, voters and proposals
     #[cfg(not(feature = "ink-as-dependency"))]
     #[ink(storage)]
     pub struct Ballot {
@@ -40,11 +42,15 @@ mod ballot {
 
     impl Ballot {
 
+        /// If proposal names are provided, they are saved to Ballot
+        /// else tha bllot is empty
+        /// The person who deploys the contract is the chairperson
         #[ink(constructor)]
         pub fn new(proposal_names: Option<Vec<String>> )-> Self {
 
             // get chair person address
             let chair_person =  Self::env().caller();
+
             // create empty propsal and voters
             let mut proposals: Vec<Proposal> = Vec::new();
             let mut voters = HashMap::new();
@@ -57,6 +63,7 @@ mod ballot {
                 vote: None,
             });
 
+            // if proposals are provided
             if proposal_names.is_some() {
                 // store the provided propsal names
                 let names = proposal_names.unwrap();
@@ -76,13 +83,13 @@ mod ballot {
             }
         }
 
+        /// default constrcutor
         #[ink(constructor)]
         pub fn default() -> Self {
             Self::new(Default::default())
         }
         
-
-        /// Simply returns the current value of our `bool`.
+        /// Simply returns the current chairperson id`.
         #[ink(message)]
         pub fn get_chairperson(&self) -> AccountId {
             self.chair_person
@@ -106,27 +113,47 @@ mod ballot {
             assert_eq!(voter.voted,false, "the voter has already voted");
 
             voter.weight = 1;
+        }
 
+        /// the function adds the provided voter id into possible
+        /// list of voters. By default the voter has no voting right,
+        /// the contract owner must approve the voter before he can cast a vote
+        #[ink(message)]
+        pub fn add_voter(&mut self, voter_id: AccountId) -> bool{
+
+            let voter_opt = self.voters.get(&voter_id);
+            // the voter does not exists
+            if voter_opt.is_some() {
+                return false
+            }
+
+            self.voters.insert(voter_id, Voter{
+                weight:0,
+                voted:false,
+                delegate: None,
+                vote: None,
+            });
+            return true
         }
 
         /// Delegate your vote to the voter `to`.
+        /// If the `to` has already voted, you vote is casted to
+        /// the same candidate as `to`
         #[ink(message)]
         pub fn delegate(&mut self, to: AccountId)  {
 
             // account id of the person who invoked the function
             let sender_id = self.env().caller();
             let sender_weight;
-            assert_eq!(to,sender_id, "Self-delegation is disallowed.");
+            assert_ne!(to,sender_id, "Self-delegation is disallowed.");
 
             {
                 let sender_opt =  self.voters.get_mut(&sender_id);
                 assert_eq!(sender_opt.is_some(),true, "Caller is not a valid voter");
                 let sender = sender_opt.unwrap();
 
-                assert_eq!(sender.voted,true, "You have already voted");
+                assert_eq!(sender.voted,false, "You have already voted");
 
-                // Since `sender` is a reference, this
-                // modifies `voters[msg.sender].voted`
                 sender.voted = true;
                 sender.delegate = Some(to);
                 sender_weight = sender.weight;
@@ -139,12 +166,10 @@ mod ballot {
                 let delegate = delegate_opt.unwrap();
 
                 // the voter should not have already voted
-
-                let voted_to = delegate.vote.unwrap() as usize;
-
                 if delegate.voted {
                     // If the delegate already voted,
                     // directly add to the number of votes
+                    let voted_to = delegate.vote.unwrap() as usize;
                     self.proposals[voted_to].vote_count += sender_weight;
                 } else {
                     // If the delegate did not vote yet,
@@ -165,9 +190,9 @@ mod ballot {
 
             // the voter should not have already voted
             let sender = sender_opt.unwrap();
-            assert_eq!(sender.voted,true, "You have already voted");
+            assert_eq!(sender.voted,false, "You have already voted");
 
-            assert_eq!(sender.weight,0, "You have no right to vote");
+            assert_eq!(sender.weight,1, "You have no right to vote");
 
             // get the proposal
             let proposal_opt = self.proposals.get_mut(proposal_index as usize);
@@ -204,7 +229,7 @@ mod ballot {
         // returns the name of the winner
         pub fn get_winning_proposal_name(&self) -> &String {
             let winner_index: Option<usize> = self.winning_proposal();
-            assert_eq!(winner_index.is_some(),true, "No winner!");
+            assert_eq!(winner_index.is_some(),true, "No Proposal!");
             let index = winner_index.unwrap();
             let proposal = self.proposals.get(index).unwrap();
             return &proposal.name
@@ -230,7 +255,10 @@ mod ballot {
                     name:String::from(proposal_name),
                     vote_count: 0,
             });
+        }
 
+        pub fn get_voter(&self, voter_id: AccountId) -> Option<&Voter>{
+            self.voters.get(&voter_id)
         }
 
 
@@ -267,5 +295,55 @@ mod ballot {
             assert_eq!(ballot.get_proposal_length(),1);
         }
 
+        #[ink::test]
+        fn adding_voters_work() {
+            let mut ballot = Ballot::default();
+            let account_id = AccountId::from([0x0; 32]);
+            assert_eq!(ballot.add_voter(account_id),true);
+            assert_eq!(ballot.add_voter(account_id),false);
+        }
+
+        #[ink::test]
+        fn give_voting_rights_work() {
+            let mut ballot = Ballot::default();
+            let account_id = AccountId::from([0x0; 32]);
+
+            ballot.add_voter(account_id);     
+            ballot.give_voting_right(account_id);
+            let voter = ballot.get_voter(account_id).unwrap();
+            assert_eq!(voter.weight,1);
+        }
+
+        #[ink::test]
+        fn voting_works() {
+            let mut ballot = Ballot::default();
+            ballot.add_proposal(String::from("Proposal #1"));
+            ballot.vote(0);
+            let voter = ballot.get_voter(ballot.get_chairperson()).unwrap();
+            assert_eq!(voter.voted,true);
+        }
+
+        #[ink::test]
+        fn delegation_works() {
+            let mut ballot = Ballot::default();
+            let to_id = AccountId::from([0x0; 32]);
+
+            ballot.add_voter(to_id);     
+            ballot.delegate(to_id);
+
+            let voter = ballot.get_voter(ballot.get_chairperson()).unwrap();
+            assert_eq!(voter.delegate.unwrap(),to_id);
+        } 
+
+        #[ink::test]
+        fn get_winning_proposal_name_working() {
+            let mut ballot = Ballot::default();
+            ballot.add_proposal(String::from("Proposal #1"));
+            ballot.add_proposal(String::from("Proposal #2"));
+            ballot.vote(0);
+            let proposal_name = ballot.get_winning_proposal_name();
+            assert_eq!(proposal_name, "Proposal #1");
+        }
+        
     }
 }
