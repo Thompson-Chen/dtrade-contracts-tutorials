@@ -1,14 +1,14 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+/// solidity version of this contract 
+/// could be found here: https://solidity.readthedocs.io/en/v0.5.3/solidity-by-example.html
+
 use ink_lang as ink;
 
 #[ink::contract]
 mod ballot {
-    #[cfg(not(feature = "ink-as-dependency"))]
-
     use ink_storage::collections::HashMap;
-
-    /// make sure to include ink_prelude as dependency in .toml file
+    /// make sure to include ink_prelude as dependency in cargo.toml file
     use ink_prelude::string::String;
     use ink_prelude::vec::Vec;
     use ink_storage::traits::{PackedLayout, SpreadLayout};
@@ -30,6 +30,7 @@ mod ballot {
         vote: Option<i32>,   // index of the voted proposal
     }
 
+    #[cfg(not(feature = "ink-as-dependency"))]
     #[ink(storage)]
     pub struct Ballot {
         chair_person: AccountId,
@@ -38,14 +39,14 @@ mod ballot {
     }
 
     impl Ballot {
+
         #[ink(constructor)]
-        pub fn new( propsal_names: Vec<String> ) -> Self {
+        pub fn new(proposal_names: Option<Vec<String>> )-> Self {
 
             // get chair person address
             let chair_person =  Self::env().caller();
-
             // create empty propsal and voters
-            let mut proposals = Vec::new();
+            let mut proposals: Vec<Proposal> = Vec::new();
             let mut voters = HashMap::new();
 
             // initialize chain person's vote
@@ -56,13 +57,16 @@ mod ballot {
                 vote: None,
             });
 
-            // store the provided propsal names
-            for name in &propsal_names {
-                proposals.push(
-                    Proposal{
-                    name: String::from(name),
-                    vote_count: 0,
-                });
+            if proposal_names.is_some() {
+                // store the provided propsal names
+                let names = proposal_names.unwrap();
+                for name in &names {
+                    proposals.push(
+                        Proposal{
+                        name: String::from(name),
+                        vote_count: 0,
+                    });
+                }
             }
 
             Self {
@@ -72,20 +76,21 @@ mod ballot {
             }
         }
 
-        /// Constructors can delegate to other constructors.
         #[ink(constructor)]
         pub fn default() -> Self {
             Self::new(Default::default())
         }
+        
 
         /// Simply returns the current value of our `bool`.
         #[ink(message)]
-        pub fn get(&self) -> AccountId {
+        pub fn get_chairperson(&self) -> AccountId {
             self.chair_person
         }
 
         /// Give `voter` the right to vote on this ballot.
         // May only be called by `chairperson`.
+        #[ink(message)]
         pub fn give_voting_right(&mut self, voter_id: AccountId) {
             let caller = self.env().caller();
 
@@ -105,6 +110,7 @@ mod ballot {
         }
 
         /// Delegate your vote to the voter `to`.
+        #[ink(message)]
         pub fn delegate(&mut self, to: AccountId)  {
 
             // account id of the person who invoked the function
@@ -150,6 +156,7 @@ mod ballot {
 
         /// Give your vote (including votes delegated to you)
         /// to proposal `proposals[proposal].name`.
+        #[ink(message)]
         pub fn vote(&mut self, proposal_index: i32) {
             let sender_id = self.env().caller();
 
@@ -195,7 +202,7 @@ mod ballot {
         // Calls winning_proposal() function to get the index
         // of the winner contained in the proposals array and then
         // returns the name of the winner
-        pub fn winning_proposal_name(&self) -> &String {
+        pub fn get_winning_proposal_name(&self) -> &String {
             let winner_index: Option<usize> = self.winning_proposal();
             assert_eq!(winner_index.is_some(),true, "No winner!");
             let index = winner_index.unwrap();
@@ -203,6 +210,29 @@ mod ballot {
             return &proposal.name
 
         }
+
+        /// given an index returns the name of the proposal at that index
+        pub fn get_proposal_name_at_index(&self, index:usize) -> &String {
+            let proposal = self.proposals.get(index).unwrap();
+            return &proposal.name
+        }
+
+        /// returns the number of proposals in ballet
+        pub fn get_proposal_length(&self) -> usize {
+            return self.proposals.len()
+        }
+
+        /// adds the given proposal name in ballet
+        /// to do: check unqiueness of proposal,
+        pub fn add_proposal(&mut self, proposal_name: String){
+            self.proposals.push(
+                Proposal{
+                    name:String::from(proposal_name),
+                    vote_count: 0,
+            });
+
+        }
+
 
 
     }
@@ -214,12 +244,28 @@ mod ballot {
     mod tests {
         /// Imports all the definitions from the outer scope so we can use them here.
         use super::*;
+        use ink_lang as ink;
 
-        /// We test if the default constructor does its job.
-        #[test]
+        #[ink::test]
+        fn new_works() {
+            let mut proposal_names: Vec<String> = Vec::new();
+            proposal_names.push(String::from("Proposal # 1"));  
+            let ballot = Ballot::new(Some(proposal_names));
+            assert_eq!(ballot.get_proposal_length(),1);
+        }
+
+        #[ink::test]
         fn default_works() {
             let ballot = Ballot::default();
-            assert_eq!(ballot.get(), false);
+            assert_eq!(ballot.get_proposal_length(), 0);
         }
+
+        #[ink::test]
+        fn adding_proposals_works() {
+            let mut ballot = Ballot::default();
+            ballot.add_proposal(String::from("Proposal #1"));
+            assert_eq!(ballot.get_proposal_length(),1);
+        }
+
     }
 }
