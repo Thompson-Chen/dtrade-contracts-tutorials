@@ -9,8 +9,6 @@ use ink_lang as ink;
 #[ink::contract]
 mod ballot {
     use ink_storage::collections::HashMap;
-    /// make sure to include ink_prelude as dependency in cargo.toml file
-    use ink_prelude::string::String;
     use ink_prelude::vec::Vec;
     use ink_storage::traits::{PackedLayout, SpreadLayout};
 
@@ -55,7 +53,7 @@ mod ballot {
             let mut proposals: Vec<Proposal> = Vec::new();
             let mut voters = HashMap::new();
 
-            // initialize chain person's vote
+            // initialize chair person's vote
             voters.insert(chair_person, Voter{
                 weight:1,
                 voted:false,
@@ -243,7 +241,7 @@ mod ballot {
         }
 
         /// returns the number of proposals in ballet
-        pub fn get_proposal_length(&self) -> usize {
+        pub fn get_proposal_count(&self) -> usize {
             return self.proposals.len()
         }
 
@@ -259,6 +257,10 @@ mod ballot {
 
         pub fn get_voter(&self, voter_id: AccountId) -> Option<&Voter>{
             self.voters.get(&voter_id)
+        }
+        
+        pub fn get_voter_count(&self) -> usize{
+            self.voters.len() as usize
         }
 
 
@@ -279,20 +281,20 @@ mod ballot {
             let mut proposal_names: Vec<String> = Vec::new();
             proposal_names.push(String::from("Proposal # 1"));  
             let ballot = Ballot::new(Some(proposal_names));
-            assert_eq!(ballot.get_proposal_length(),1);
+            assert_eq!(ballot.get_proposal_count(),1);
         }
 
         #[ink::test]
         fn default_works() {
             let ballot = Ballot::default();
-            assert_eq!(ballot.get_proposal_length(), 0);
+            assert_eq!(ballot.get_proposal_count(), 0);
         }
 
         #[ink::test]
         fn adding_proposals_works() {
             let mut ballot = Ballot::default();
             ballot.add_proposal(String::from("Proposal #1"));
-            assert_eq!(ballot.get_proposal_length(),1);
+            assert_eq!(ballot.get_proposal_count(),1);
         }
 
         #[ink::test]
